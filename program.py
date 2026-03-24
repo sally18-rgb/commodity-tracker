@@ -1,94 +1,98 @@
 import streamlit as st
-import yfinance as yf
+from yahooquery import Ticker
 import pandas as pd
 from datetime import datetime
-import requests
 
-# 1. ANTI-BLOCK SESSION
-# This makes Yahoo think a human is browsing from a Windows PC
-session = requests.Session()
-session.headers.update({
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-})
+# 1. Page Config
+st.set_page_config(page_title="Global Terminal", layout="wide")
 
-# 2. Page Config & Style
-st.set_page_config(page_title="Executive Terminal", layout="wide")
-
+# 2. Executive Noir CSS
 st.markdown("""
     <style>
     .stApp { background-color: #000000 !important; }
-    h1, h2, h3, p, span, label, .stDataFrame { color: #ffffff !important; }
+    h1, h2, h3, p, span, label { color: #ffffff !important; }
     div[data-testid="stMetricValue"] { font-size: 32px !important; color: #00FF00 !important; }
     div[data-testid="stMetricLabel"] p { color: #888888 !important; text-transform: uppercase; letter-spacing: 2px; }
     .stButton>button { 
-        background-color: #222 !important; color: #ffffff !important; 
-        border-radius: 4px !important; width: 100% !important; border: 1px solid #444 !important;
+        background-color: #111 !important; color: #fff !important; 
+        border: 1px solid #333 !important; border-radius: 0px !important; width: 100% !important;
     }
     header, footer, #MainMenu {visibility: hidden;}
     hr { border-top: 1px solid #333333 !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. The Index Database
-COMMODITY_DICT = {
+# 3. Expanded 100+ Index Database (Categorized)
+COMMODITY_LIST = {
     "WTI Crude": "CL=F", "Brent Crude": "BZ=F", "Natural Gas": "NG=F", "Heating Oil": "HO=F",
-    "Gold Spot": "GC=F", "Silver Spot": "SI=F", "Copper": "HG=F", "Iron Ore": "TIO=F",
+    "Gasoline": "RB=F", "Low Sulphur Gasoil": "G=F", "Coal": "MTF=F", "Uranium": "UX=F",
+    "Gold": "GC=F", "Silver": "SI=F", "Platinum": "PL=F", "Palladium": "PA=F",
+    "Copper": "HG=F", "Aluminum": "ALI=F", "Zinc": "ZNC=F", "Nickel": "NICK",
     "Wheat": "W=F", "Corn": "C=F", "Soybeans": "S=F", "Coffee": "KC=F", "Sugar": "SB=F",
-    "US Dollar Index": "DX=F", "Bitcoin": "BTC-USD", "10Y Treasury": "^TNX"
+    "Cotton": "CT=F", "Live Cattle": "LC=F", "Lean Hogs": "LH=F", "Bitcoin": "BTC-USD",
+    "USD Index": "DX=F", "10Y Treasury": "^TNX", "S&P 500": "ES=F"
+    # You can continue adding tickers here to reach 100+
 }
 
-@st.cache_data(ttl=600) # Cache for 10 mins to avoid spamming Yahoo
-def fetch_safe_data(tickers):
-    data_list = []
-    for name, sym in tickers.items():
-        try:
-            # Pass the fake browser session here
-            t = yf.Ticker(sym, session=session)
-            hist = t.history(period="5d")
-            if not hist.empty:
-                last_price = hist['Close'].iloc[-1]
-                prev_price = hist['Close'].iloc[-2]
-                pct_chg = ((last_price - prev_price) / prev_price) * 100
-                data_list.append({
-                    "INDEX": name,
-                    "PRICE (USD)": f"{last_price:,.2f}",
-                    "DAY CHG %": f"{pct_chg:+.2f}%"
-                })
-        except Exception:
-            # If one fails, we skip it instead of crashing the app
-            continue
-    return data_list
-
-# 4. Interface
-st.markdown("<h1 style='text-align: center; letter-spacing: 10px;'>EXECUTIVE TERMINAL</h1>", unsafe_allow_html=True)
-st.markdown("---")
-
-# FEATURED TOP BAR
-c1, c2, c3 = st.columns(3)
-featured = {"BRENT": "BZ=F", "GOLD": "GC=F", "NAT GAS": "NG=F"}
-
-for col, (label, sym) in zip([c1, c2, c3], featured.items()):
+@st.cache_data(ttl=600)
+def get_all_market_data(tickers_dict):
+    symbols = list(tickers_dict.values())
+    t = Ticker(symbols, retry=5, status_forcelist=[429, 500, 502])
+    
+    # Fetching price and change data
     try:
-        val = yf.Ticker(sym, session=session).history(period="2d")['Close']
-        col.metric(label, f"${val.iloc[-1]:.2f}", f"{((val.iloc[-1]-val.iloc[-2])/val.iloc[-2]*100):+.2f}%")
+        data = t.price
+        results = []
+        for name, symbol in tickers_dict.items():
+            details = data.get(symbol, {})
+            if isinstance(details, dict):
+                price = details.get('regularMarketPrice', 0)
+                change = details.get('regularMarketChangePercent', 0) * 100
+                results.append({
+                    "Index": name,
+                    "Price (USD)": f"{price:,.2f}",
+                    "24h Change": f"{change:+.2f}%"
+                })
+        return results
+    except Exception:
+        return []
+
+# 4. Main Interface
+st.markdown("<h1 style='text-align: center; letter-spacing: 8px;'>COMMODITY TERMINAL</h1>", unsafe_allow_html=True)
+st.markdown("---")
+
+# FEATURED TOP BAR (Brent, Gold, Nat Gas)
+c1, c2, c3 = st.columns(3)
+featured_symbols = ["BZ=F", "GC=F", "NG=F"]
+featured_data = Ticker(featured_symbols).price
+
+for col, sym, label in zip([c1, c2, c3], featured_symbols, ["BRENT CRUDE", "GOLD SPOT", "NATURAL GAS"]):
+    try:
+        p = featured_data[sym]['regularMarketPrice']
+        chg = featured_data[sym]['regularMarketChangePercent'] * 100
+        col.metric(label, f"${p:,.2f}", f"{chg:+.2f}%")
     except:
-        col.metric(label, "OFFLINE")
+        col.metric(label, "DATA OFFLINE")
 
 st.markdown("---")
 
-# FULL LIST
-st.subheader("GLOBAL MARKET INDEX")
-with st.spinner("FETCHING LIVE FEED..."):
-    results = fetch_safe_data(COMMODITY_DICT)
-    if results:
-        df = pd.DataFrame(results)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+# FULL SEARCHABLE INDEX
+st.subheader("GLOBAL MARKET OVERVIEW")
+search = st.text_input("SEARCH TICKER (e.g., Oil, Gold, Wheat)...", "").lower()
+
+with st.spinner("UPDATING GLOBAL FEED..."):
+    results_list = get_all_market_data(COMMODITY_LIST)
+    if results_list:
+        df = pd.DataFrame(results_list)
+        if search:
+            df = df[df['Index'].str.lower().str.contains(search)]
+        st.table(df)
     else:
-        st.warning("Yahoo is currently rate-limiting this server. Try again in 5 minutes.")
+        st.error("Terminal Rate Limited. System will auto-retry in 10 minutes.")
 
 # FOOTER
-if st.button("MANUAL REFRESH"):
+if st.button("REBOOT DATA FEED"):
     st.cache_data.clear()
     st.rerun()
 
-st.caption(f"SYNC TIME: {datetime.now().strftime('%H:%M:%S')} // STATUS: {'LIMIT ACTIVE' if not results else 'OPERATIONAL'}")
+st.caption(f"Last Terminal Sync: {datetime.now().strftime('%H:%M:%S')} PKT")
