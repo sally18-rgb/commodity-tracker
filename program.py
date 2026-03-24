@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 import requests
 
-# 1. SETUP SESSION (The "Human" Browser Filter)
+# 1. SETUP SESSION (Browser Emulation)
 session = requests.Session()
 session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/110.0.0.0 Safari/537.36'})
 
@@ -21,27 +21,33 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. THE 100+ INDEX DATABASE (Grouped by Tab)
+# 3. EXPANDED DATABASE (Grouped by Category)
 GROUPS = {
-    "🛢️ Oil Blends (OilPrice Style)": {
+    "Oil Blends": {
         "WTI Crude": "CL=F", "Brent Crude": "BZ=F", "Mars US": "MARS", "Urals": "URL.L", 
         "Murban": "MUR=F", "Western Canadian Select": "WCS", "Dubai Crude": "DUB=F",
-        "Tapis Crude": "TAP.L", "Heating Oil": "HO=F", "RBOB Gasoline": "RB=F"
+        "Tapis Crude": "TAP.L", "Oman Crude": "OQD=F", "Louisiana Light": "LLS",
+        "Bonny Light": "BONY.L", "Arab Light": "ARB.L", "Basra Light": "BAS.L"
     },
-    "⚡ Energy & Gas": {
+    "Energy and Gas": {
         "Natural Gas": "NG=F", "Dutch TTF Gas": "TTF=F", "Coal": "MTF=F", "Uranium": "UX=F",
-        "Ethanol": "CU=F", "Propane": "PN=F", "Carbon Credits": "CFI=F"
+        "Ethanol": "CU=F", "Propane": "PN=F", "Carbon Credits": "CFI=F", "Heating Oil": "HO=F",
+        "RBOB Gasoline": "RB=F", "Naphtha": "NPH=F"
     },
-    "💰 Metals (Gold/Silver)": {
-        "Gold Spot": "GC=F", "Silver Spot": "SI=F", "Copper": "HG=F", "Aluminum": "ALI=F",
-        "Platinum": "PL=F", "Palladium": "PA=F", "Nickel": "NICK", "Zinc": "ZNC=F", "Lead": "LED"
+    "Precious Metals": {
+        "Gold Spot": "GC=F", "Silver Spot": "SI=F", "Platinum": "PL=F", "Palladium": "PA=F"
     },
-    "🌾 Agriculture": {
+    "Industrial Metals": {
+        "Copper": "HG=F", "Aluminum": "ALI=F", "Nickel": "NICK", "Zinc": "ZNC=F", 
+        "Lead": "LED", "Iron Ore": "TIO=F", "Steel": "ST-USD", "Lithium": "LTH-USD"
+    },
+    "Agriculture": {
         "Wheat": "W=F", "Corn": "C=F", "Soybeans": "S=F", "Coffee": "KC=F", "Sugar": "SB=F",
-        "Cocoa": "CC=F", "Cotton": "CT=F", "Oats": "ZO=F", "Rough Rice": "RR=F"
+        "Cocoa": "CC=F", "Cotton": "CT=F", "Oats": "ZO=F", "Rough Rice": "RR=F", "Palm Oil": "PO=F"
     },
-    "🇵🇰 Pakistan Focus": {
-        "KSE 100 Index": "^KSE", "USD/PKR": "PKR=X", "EUR/PKR": "EURPKR=X", "GBP/PKR": "GBPPKR=X"
+    "Pakistan Focus": {
+        "KSE 100 Index": "^KSE", "USD/PKR": "PKR=X", "EUR/PKR": "EURPKR=X", "GBP/PKR": "GBPPKR=X",
+        "Gold 24K (Local Estimate)": "GC=F"
     }
 }
 
@@ -56,6 +62,12 @@ def get_group_data(tickers):
                 price = hist['Close'].iloc[-1]
                 prev = hist['Close'].iloc[-2]
                 chg = ((price - prev) / prev) * 100
+                
+                # Custom calculation for Pakistan Gold
+                if name == "Gold 24K (Local Estimate)":
+                    pkr_rate = yf.Ticker("PKR=X", session=session).history(period="1d")['Close'].iloc[-1]
+                    price = (price / 31.103) * 10 * pkr_rate
+                
                 res.append({"Index": name, "Price": f"{price:,.2f}", "Change %": f"{chg:+.2f}%"})
         except:
             continue
@@ -64,7 +76,7 @@ def get_group_data(tickers):
 # 4. INTERFACE
 st.markdown("<h1 style='text-align: center; letter-spacing: 5px;'>GLOBAL ENERGY TERMINAL</h1>", unsafe_allow_html=True)
 
-# TOP METRICS (Brent, Gold PKR, USD/PKR)
+# TOP METRICS
 c1, c2, c3 = st.columns(3)
 try:
     gold_val = yf.Ticker("GC=F", session=session).history(period="2d")['Close'].iloc[-1]
@@ -75,11 +87,11 @@ try:
     c2.metric("GOLD 10G (PKR)", f"Rs {gold_pkr:,.0f}")
     c3.metric("USD / PKR", f"{pkr_val:.2f}")
 except:
-    st.write("Initializing Terminal...")
+    st.write("System Syncing...")
 
 st.markdown("---")
 
-# THE TABS (This prevents the 100-index crash)
+# SEARCHABLE TABS
 tabs = st.tabs(list(GROUPS.keys()))
 
 for i, (category, tickers) in enumerate(GROUPS.items()):
@@ -88,11 +100,11 @@ for i, (category, tickers) in enumerate(GROUPS.items()):
         if data:
             st.table(pd.DataFrame(data))
         else:
-            st.info(f"Syncing {category} prices...")
+            st.info(f"Loading {category} data...")
 
 # FOOTER
-if st.button('FORCE SYSTEM REBOOT'):
+if st.button('REBOOT TERMINAL'):
     st.cache_data.clear()
     st.rerun()
 
-st.caption(f"Sync Time: {datetime.now().strftime('%H:%M:%S')} PKT // Status: Operational")
+st.caption(f"Sync: {datetime.now().strftime('%H:%M:%S')} PKT // Operational")
