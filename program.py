@@ -77,4 +77,18 @@ for col, (label, sym) in zip([c1, c2, c3], featured.items()):
 st.markdown("---")
 
 # FULL LIST
-st.subheader("GLOBAL MARKET INDEX
+st.subheader("GLOBAL MARKET INDEX")
+with st.spinner("FETCHING LIVE FEED..."):
+    results = fetch_safe_data(COMMODITY_DICT)
+    if results:
+        df = pd.DataFrame(results)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.warning("Yahoo is currently rate-limiting this server. Try again in 5 minutes.")
+
+# FOOTER
+if st.button("MANUAL REFRESH"):
+    st.cache_data.clear()
+    st.rerun()
+
+st.caption(f"SYNC TIME: {datetime.now().strftime('%H:%M:%S')} // STATUS: {'LIMIT ACTIVE' if not results else 'OPERATIONAL'}")
