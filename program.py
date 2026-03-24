@@ -2,9 +2,17 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 from datetime import datetime
+import requests
 
-# 1. Configuration & Style
-st.set_page_config(page_title="Global Energy Terminal", layout="wide")
+# 1. ANTI-BLOCK SESSION
+# This makes Yahoo think a human is browsing from a Windows PC
+session = requests.Session()
+session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+})
+
+# 2. Page Config & Style
+st.set_page_config(page_title="Executive Terminal", layout="wide")
 
 st.markdown("""
     <style>
@@ -18,107 +26,55 @@ st.markdown("""
     }
     header, footer, #MainMenu {visibility: hidden;}
     hr { border-top: 1px solid #333333 !important; }
-    .stTable { background-color: #000 !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. The Expanded 100+ Index Database (OilPrice.com Blends Included)
+# 3. The Index Database
 COMMODITY_DICT = {
-    # ENERGY - GLOBAL BLENDS (Inspired by OilPrice.com)
-    "WTI Crude (USA)": "CL=F",
-    "Brent Crude (Global)": "BZ=F",
-    "Mars US (Medium Sour)": "MARS",
-    "Western Canadian Select": "WCS-USD",
-    "Urals (Russian Mix)": "URALS.ME",
-    "Murban (Abu Dhabi)": "MURB.AD",
-    "Natural Gas (Henry Hub)": "NG=F",
-    "Dutch TTF Gas (EU)": "TTF=F",
-    "RBOB Gasoline": "RB=F",
-    "Heating Oil": "HO=F",
-    "Coal (Newcastle)": "MTF=F",
-    "Uranium": "UX=F",
-    "Ethanol": "CU=F",
-    
-    # PRECIOUS METALS
-    "Gold Spot": "GC=F", "Silver Spot": "SI=F", "Platinum": "PL=F", "Palladium": "PA=F",
-
-    # INDUSTRIAL METALS
-    "Copper": "HG=F", "Aluminum": "ALI=F", "Zinc": "ZNC=F", "Nickel": "NICK", "Lead": "LED", 
-    "Iron Ore": "TIO=F", "Lithium": "LTH-USD", "Steel": "ST-USD",
-
-    # AGRICULTURE & GRAINS
-    "Wheat": "W=F", "Corn": "C=F", "Soybeans": "S=F", "Soybean Oil": "BO=F", "Rough Rice": "RR=F",
-    "Oats": "ZO=F", "Canola": "RS=F", "Barley": "BAR=F",
-
-    # SOFTS & LIVESTOCK
-    "Coffee": "KC=F", "Sugar": "SB=F", "Cocoa": "CC=F", "Cotton": "CT=F", "Lumber": "LBS=F",
-    "Live Cattle": "LC=F", "Lean Hogs": "LH=F", "Feeder Cattle": "FC=F", "Milk": "DA=F",
-
-    # CURRENCIES & MACRO (The "Global" part of the Index)
-    "US Dollar Index": "DX=F", "Bitcoin": "BTC-USD", "Ethereum": "ETH-USD", "10Y Treasury": "^TNX",
-    "S&P 500": "ES=F", "VIX Volatility": "^VIX", "EUR/USD": "EURUSD=X", "GBP/USD": "GBPUSD=X"
+    "WTI Crude": "CL=F", "Brent Crude": "BZ=F", "Natural Gas": "NG=F", "Heating Oil": "HO=F",
+    "Gold Spot": "GC=F", "Silver Spot": "SI=F", "Copper": "HG=F", "Iron Ore": "TIO=F",
+    "Wheat": "W=F", "Corn": "C=F", "Soybeans": "S=F", "Coffee": "KC=F", "Sugar": "SB=F",
+    "US Dollar Index": "DX=F", "Bitcoin": "BTC-USD", "10Y Treasury": "^TNX"
 }
 
-@st.cache_data(ttl=300)
-def fetch_data(tickers):
+@st.cache_data(ttl=600) # Cache for 10 mins to avoid spamming Yahoo
+def fetch_safe_data(tickers):
     data_list = []
     for name, sym in tickers.items():
         try:
-            t = yf.Ticker(sym)
+            # Pass the fake browser session here
+            t = yf.Ticker(sym, session=session)
             hist = t.history(period="5d")
             if not hist.empty:
                 last_price = hist['Close'].iloc[-1]
                 prev_price = hist['Close'].iloc[-2]
                 pct_chg = ((last_price - prev_price) / prev_price) * 100
                 data_list.append({
-                    "CATEGORY": "Energy" if sym in ["CL=F", "BZ=F", "NG=F"] else "Commodity",
-                    "INDEX NAME": name,
+                    "INDEX": name,
                     "PRICE (USD)": f"{last_price:,.2f}",
                     "DAY CHG %": f"{pct_chg:+.2f}%"
                 })
-        except:
+        except Exception:
+            # If one fails, we skip it instead of crashing the app
             continue
     return data_list
 
-# 3. Layout: Top Header
+# 4. Interface
 st.markdown("<h1 style='text-align: center; letter-spacing: 10px;'>EXECUTIVE TERMINAL</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #666;'>OILPRICE BLENDS // GLOBAL METALS // GRAIN INDICES</p>", unsafe_allow_html=True)
 st.markdown("---")
 
-# 4. The "Dashboard" (Quick View)
-c1, c2, c3, c4 = st.columns(4)
-with c1:
-    val = yf.Ticker("BZ=F").history(period="2d")['Close'].iloc[-1]
-    st.metric("BRENT CRUDE", f"${val:.2f}")
-with c2:
-    val = yf.Ticker("CL=F").history(period="2d")['Close'].iloc[-1]
-    st.metric("WTI CRUDE", f"${val:.2f}")
-with c3:
-    val = yf.Ticker("GC=F").history(period="2d")['Close'].iloc[-1]
-    st.metric("GOLD", f"${val:,.0f}")
-with c4:
-    val = yf.Ticker("DX=F").history(period="2d")['Close'].iloc[-1]
-    st.metric("USD INDEX", f"{val:.2f}")
+# FEATURED TOP BAR
+c1, c2, c3 = st.columns(3)
+featured = {"BRENT": "BZ=F", "GOLD": "GC=F", "NAT GAS": "NG=F"}
+
+for col, (label, sym) in zip([c1, c2, c3], featured.items()):
+    try:
+        val = yf.Ticker(sym, session=session).history(period="2d")['Close']
+        col.metric(label, f"${val.iloc[-1]:.2f}", f"{((val.iloc[-1]-val.iloc[-2])/val.iloc[-2]*100):+.2f}%")
+    except:
+        col.metric(label, "OFFLINE")
 
 st.markdown("---")
 
-# 5. Searchable Table
-st.subheader("LIVE GLOBAL INDEX (100+)")
-search = st.text_input("FILTER BY BLEND OR CATEGORY (e.g. 'Crude' or 'Copper')", "")
-
-with st.spinner("UPDATING DATA FEED..."):
-    results = fetch_data(COMMODITY_DICT)
-    df = pd.DataFrame(results)
-
-if not df.empty:
-    if search:
-        df = df[df['INDEX NAME'].str.lower().str.contains(search.lower())]
-    st.dataframe(df, use_container_width=True, hide_index=True)
-
-# 6. Action Footer
-st.markdown("---")
-if st.button("MANUAL REFRESH"):
-    st.cache_data.clear()
-    st.rerun()
-
-st.caption(f"Terminal Status: Connected // Sync Time: {datetime.now().strftime('%H:%M:%S')} PKT")
+# FULL LIST
+st.subheader("GLOBAL MARKET INDEX
