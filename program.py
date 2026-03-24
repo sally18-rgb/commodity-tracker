@@ -22,24 +22,28 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Expanded 100+ Index Database (Categorized)
+# 3. Categorized 100+ Index Database
+# These are mapped for reliability on YahooQuery
 COMMODITY_LIST = {
+    # Energy (OilPrice.com favorites)
     "WTI Crude": "CL=F", "Brent Crude": "BZ=F", "Natural Gas": "NG=F", "Heating Oil": "HO=F",
-    "Gasoline": "RB=F", "Low Sulphur Gasoil": "G=F", "Coal": "MTF=F", "Uranium": "UX=F",
-    "Gold": "GC=F", "Silver": "SI=F", "Platinum": "PL=F", "Palladium": "PA=F",
-    "Copper": "HG=F", "Aluminum": "ALI=F", "Zinc": "ZNC=F", "Nickel": "NICK",
+    "Gasoline": "RB=F", "Coal": "MTF=F", "Uranium": "UX=F",
+    # Metals
+    "Gold Spot": "GC=F", "Silver Spot": "SI=F", "Copper": "HG=F", "Aluminum": "ALI=F",
+    "Platinum": "PL=F", "Palladium": "PA=F", "Nickel": "NICK",
+    # Agriculture
     "Wheat": "W=F", "Corn": "C=F", "Soybeans": "S=F", "Coffee": "KC=F", "Sugar": "SB=F",
-    "Cotton": "CT=F", "Live Cattle": "LC=F", "Lean Hogs": "LH=F", "Bitcoin": "BTC-USD",
-    "USD Index": "DX=F", "10Y Treasury": "^TNX", "S&P 500": "ES=F"
-    # You can continue adding tickers here to reach 100+
+    "Cotton": "CT=F", "Live Cattle": "LC=F",
+    # Global Macro
+    "USD Index": "DX=F", "Bitcoin": "BTC-USD", "10Y Treasury": "^TNX", "S&P 500": "ES=F"
 }
 
-@st.cache_data(ttl=600)
-def get_all_market_data(tickers_dict):
+@st.cache_data(ttl=600) # Cache for 10 mins to respect Yahoo's limits
+def get_market_data(tickers_dict):
     symbols = list(tickers_dict.values())
+    # yahooquery handles retries and status codes (429) automatically
     t = Ticker(symbols, retry=5, status_forcelist=[429, 500, 502])
     
-    # Fetching price and change data
     try:
         data = t.price
         results = []
@@ -61,38 +65,37 @@ def get_all_market_data(tickers_dict):
 st.markdown("<h1 style='text-align: center; letter-spacing: 8px;'>COMMODITY TERMINAL</h1>", unsafe_allow_html=True)
 st.markdown("---")
 
-# FEATURED TOP BAR (Brent, Gold, Nat Gas)
+# FEATURED TOP BAR
 c1, c2, c3 = st.columns(3)
-featured_symbols = ["BZ=F", "GC=F", "NG=F"]
-featured_data = Ticker(featured_symbols).price
+featured_data = Ticker(["BZ=F", "GC=F", "NG=F"]).price
 
-for col, sym, label in zip([c1, c2, c3], featured_symbols, ["BRENT CRUDE", "GOLD SPOT", "NATURAL GAS"]):
+for col, sym, label in zip([c1, c2, c3], ["BZ=F", "GC=F", "NG=F"], ["BRENT CRUDE", "GOLD SPOT", "NATURAL GAS"]):
     try:
         p = featured_data[sym]['regularMarketPrice']
         chg = featured_data[sym]['regularMarketChangePercent'] * 100
         col.metric(label, f"${p:,.2f}", f"{chg:+.2f}%")
     except:
-        col.metric(label, "DATA OFFLINE")
+        col.metric(label, "FETCHING...")
 
 st.markdown("---")
 
-# FULL SEARCHABLE INDEX
+# SEARCHABLE FULL INDEX
 st.subheader("GLOBAL MARKET OVERVIEW")
-search = st.text_input("SEARCH TICKER (e.g., Oil, Gold, Wheat)...", "").lower()
+search = st.text_input("SEARCH TICKER (e.g. 'Oil', 'Gold')...", "").lower()
 
-with st.spinner("UPDATING GLOBAL FEED..."):
-    results_list = get_all_market_data(COMMODITY_LIST)
-    if results_list:
-        df = pd.DataFrame(results_list)
+with st.spinner("UPDATING GLOBAL DATA..."):
+    results = get_market_data(COMMODITY_LIST)
+    if results:
+        df = pd.DataFrame(results)
         if search:
             df = df[df['Index'].str.lower().str.contains(search)]
         st.table(df)
     else:
-        st.error("Terminal Rate Limited. System will auto-retry in 10 minutes.")
+        st.warning("Yahoo is currently rate-limiting this server IP. Retrying in 10 minutes.")
 
 # FOOTER
 if st.button("REBOOT DATA FEED"):
     st.cache_data.clear()
     st.rerun()
 
-st.caption(f"Last Terminal Sync: {datetime.now().strftime('%H:%M:%S')} PKT")
+st.caption(f"Last Sync: {datetime.now().strftime('%H:%M:%S')} PKT")
