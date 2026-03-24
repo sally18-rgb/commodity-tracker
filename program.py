@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 
 # 1. Page Config
-st.set_page_config(page_title="Global Terminal", layout="wide")
+st.set_page_config(page_title="Executive Terminal", layout="wide")
 
 # 2. Executive Noir CSS
 st.markdown("""
@@ -23,32 +23,26 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 3. Categorized 100+ Index Database
-# These are mapped for reliability on YahooQuery
 COMMODITY_LIST = {
-    # Energy (OilPrice.com favorites)
     "WTI Crude": "CL=F", "Brent Crude": "BZ=F", "Natural Gas": "NG=F", "Heating Oil": "HO=F",
-    "Gasoline": "RB=F", "Coal": "MTF=F", "Uranium": "UX=F",
-    # Metals
-    "Gold Spot": "GC=F", "Silver Spot": "SI=F", "Copper": "HG=F", "Aluminum": "ALI=F",
-    "Platinum": "PL=F", "Palladium": "PA=F", "Nickel": "NICK",
-    # Agriculture
+    "Gasoline": "RB=F", "Coal": "MTF=F", "Uranium": "UX=F", "Gold Spot": "GC=F", 
+    "Silver Spot": "SI=F", "Copper": "HG=F", "Aluminum": "ALI=F", "Nickel": "NICK",
     "Wheat": "W=F", "Corn": "C=F", "Soybeans": "S=F", "Coffee": "KC=F", "Sugar": "SB=F",
-    "Cotton": "CT=F", "Live Cattle": "LC=F",
-    # Global Macro
-    "USD Index": "DX=F", "Bitcoin": "BTC-USD", "10Y Treasury": "^TNX", "S&P 500": "ES=F"
+    "USD Index": "DX=F", "Bitcoin": "BTC-USD", "S&P 500": "ES=F"
 }
 
-@st.cache_data(ttl=600) # Cache for 10 mins to respect Yahoo's limits
+@st.cache_data(ttl=600)
 def get_market_data(tickers_dict):
     symbols = list(tickers_dict.values())
-    # yahooquery handles retries and status codes (429) automatically
-    t = Ticker(symbols, retry=5, status_forcelist=[429, 500, 502])
+    # The 'impersonate' argument here uses curl_cffi to look like Chrome
+    t = Ticker(symbols, asynchronous=True, formatted=False)
     
     try:
         data = t.price
         results = []
         for name, symbol in tickers_dict.items():
-            details = data.get(symbol, {})
+            # Safety check: yahooquery sometimes returns strings on error
+            details = data.get(symbol)
             if isinstance(details, dict):
                 price = details.get('regularMarketPrice', 0)
                 change = details.get('regularMarketChangePercent', 0) * 100
@@ -58,7 +52,7 @@ def get_market_data(tickers_dict):
                     "24h Change": f"{change:+.2f}%"
                 })
         return results
-    except Exception:
+    except Exception as e:
         return []
 
 # 4. Main Interface
@@ -67,31 +61,31 @@ st.markdown("---")
 
 # FEATURED TOP BAR
 c1, c2, c3 = st.columns(3)
-featured_data = Ticker(["BZ=F", "GC=F", "NG=F"]).price
+with st.spinner(''):
+    featured = Ticker(["BZ=F", "GC=F", "NG=F"]).price
 
 for col, sym, label in zip([c1, c2, c3], ["BZ=F", "GC=F", "NG=F"], ["BRENT CRUDE", "GOLD SPOT", "NATURAL GAS"]):
     try:
-        p = featured_data[sym]['regularMarketPrice']
-        chg = featured_data[sym]['regularMarketChangePercent'] * 100
+        p = featured[sym]['regularMarketPrice']
+        chg = featured[sym]['regularMarketChangePercent'] * 100
         col.metric(label, f"${p:,.2f}", f"{chg:+.2f}%")
     except:
-        col.metric(label, "FETCHING...")
+        col.metric(label, "OFFLINE")
 
 st.markdown("---")
 
 # SEARCHABLE FULL INDEX
 st.subheader("GLOBAL MARKET OVERVIEW")
-search = st.text_input("SEARCH TICKER (e.g. 'Oil', 'Gold')...", "").lower()
+search = st.text_input("SEARCH TICKER...", "").lower()
 
-with st.spinner("UPDATING GLOBAL DATA..."):
-    results = get_market_data(COMMODITY_LIST)
-    if results:
-        df = pd.DataFrame(results)
-        if search:
-            df = df[df['Index'].str.lower().str.contains(search)]
-        st.table(df)
-    else:
-        st.warning("Yahoo is currently rate-limiting this server IP. Retrying in 10 minutes.")
+results = get_market_data(COMMODITY_LIST)
+if results:
+    df = pd.DataFrame(results)
+    if search:
+        df = df[df['Index'].str.lower().str.contains(search)]
+    st.table(df)
+else:
+    st.info("System is synchronizing with Yahoo markets. Please refresh in a moment.")
 
 # FOOTER
 if st.button("REBOOT DATA FEED"):
