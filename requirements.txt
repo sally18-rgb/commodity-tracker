@@ -1,4 +1,3 @@
 streamlit
-yahooquery
+yfinance
 pandas
-curl_cffi
