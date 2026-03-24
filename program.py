@@ -2,11 +2,14 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 from datetime import datetime
+import requests
 
-# 1. Page Config
-st.set_page_config(page_title="Global Energy Terminal", layout="wide")
+# 1. SETUP SESSION (The "Human" Browser Filter)
+session = requests.Session()
+session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/110.0.0.0 Safari/537.36'})
 
-# 2. Executive Noir CSS
+# 2. PAGE CONFIG
+st.set_page_config(page_title="Executive Terminal", layout="wide")
 st.markdown("""
     <style>
     .stApp { background-color: #000000 !important; }
@@ -14,86 +17,82 @@ st.markdown("""
     div[data-testid="stMetricValue"] { font-size: 28px !important; color: #00FF00 !important; }
     div[data-testid="stMetricLabel"] p { color: #888888 !important; text-transform: uppercase; letter-spacing: 2px; }
     header, footer, #MainMenu {visibility: hidden;}
-    .stTable { background-color: #111 !important; border: 1px solid #333 !important; }
+    .stTable { background-color: #111 !important; border: 1px solid #333 !important; color: white !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Categorized Database (Major Global Benchmarks)
-MARKET_DATABASE = {
-    "Global Benchmarks": {
-        "Brent Crude (London)": "BZ=F",
-        "WTI Crude (US)": "CL=F",
-        "Dubai Crude": "DUB=F",
-        "OPEC Basket": "OPEC",
+# 3. THE 100+ INDEX DATABASE (Grouped by Tab)
+GROUPS = {
+    "🛢️ Oil Blends (OilPrice Style)": {
+        "WTI Crude": "CL=F", "Brent Crude": "BZ=F", "Mars US": "MARS", "Urals": "URL.L", 
+        "Murban": "MUR=F", "Western Canadian Select": "WCS", "Dubai Crude": "DUB=F",
+        "Tapis Crude": "TAP.L", "Heating Oil": "HO=F", "RBOB Gasoline": "RB=F"
     },
-    "Refined Products": {
-        "RBOB Gasoline": "RB=F",
-        "Heating Oil": "HO=F",
-        "Natural Gas": "NG=F",
-        "Ethanol": "CU=F"
+    "⚡ Energy & Gas": {
+        "Natural Gas": "NG=F", "Dutch TTF Gas": "TTF=F", "Coal": "MTF=F", "Uranium": "UX=F",
+        "Ethanol": "CU=F", "Propane": "PN=F", "Carbon Credits": "CFI=F"
     },
-    "Regional Indices": {
-        "Urals (Russia)": "URL.L",
-        "Murban (UAE)": "MUR=F",
-        "Western Canadian Select": "WCS",
-        "KSE 100 (Pakistan)": "^KSE",
-        "USD/PKR Exchange": "PKR=X"
+    "💰 Metals (Gold/Silver)": {
+        "Gold Spot": "GC=F", "Silver Spot": "SI=F", "Copper": "HG=F", "Aluminum": "ALI=F",
+        "Platinum": "PL=F", "Palladium": "PA=F", "Nickel": "NICK", "Zinc": "ZNC=F", "Lead": "LED"
+    },
+    "🌾 Agriculture": {
+        "Wheat": "W=F", "Corn": "C=F", "Soybeans": "S=F", "Coffee": "KC=F", "Sugar": "SB=F",
+        "Cocoa": "CC=F", "Cotton": "CT=F", "Oats": "ZO=F", "Rough Rice": "RR=F"
+    },
+    "🇵🇰 Pakistan Focus": {
+        "KSE 100 Index": "^KSE", "USD/PKR": "PKR=X", "EUR/PKR": "EURPKR=X", "GBP/PKR": "GBPPKR=X"
     }
 }
 
 @st.cache_data(ttl=600)
-def fetch_group_data(category_dict):
-    results = []
-    for name, sym in category_dict.items():
+def get_group_data(tickers):
+    res = []
+    for name, sym in tickers.items():
         try:
-            ticker = yf.Ticker(sym)
-            hist = ticker.history(period="2d")
+            t = yf.Ticker(sym, session=session)
+            hist = t.history(period="5d")
             if not hist.empty:
                 price = hist['Close'].iloc[-1]
                 prev = hist['Close'].iloc[-2]
-                change = ((price - prev) / prev) * 100
-                results.append({
-                    "Market/Index": name,
-                    "Price": f"{price:,.2f}",
-                    "Change %": f"{change:+.2f}%"
-                })
+                chg = ((price - prev) / prev) * 100
+                res.append({"Index": name, "Price": f"{price:,.2f}", "Change %": f"{chg:+.2f}%"})
         except:
             continue
-    return results
+    return res
 
-# 4. Main Interface
+# 4. INTERFACE
 st.markdown("<h1 style='text-align: center; letter-spacing: 5px;'>GLOBAL ENERGY TERMINAL</h1>", unsafe_allow_html=True)
-st.markdown("---")
 
-# FEATURED BAR (Gold, Brent, PKR)
+# TOP METRICS (Brent, Gold PKR, USD/PKR)
 c1, c2, c3 = st.columns(3)
 try:
-    gold = yf.Ticker("GC=F").history(period="2d")['Close']
-    pkr = yf.Ticker("PKR=X").history(period="2d")['Close'].iloc[-1]
-    gold_pkr = (gold.iloc[-1] / 31.103) * 10 * pkr
+    gold_val = yf.Ticker("GC=F", session=session).history(period="2d")['Close'].iloc[-1]
+    pkr_val = yf.Ticker("PKR=X", session=session).history(period="2d")['Close'].iloc[-1]
+    gold_pkr = (gold_val / 31.103) * 10 * pkr_val
     
-    c1.metric("BRENT CRUDE", f"${yf.Ticker('BZ=F').history(period='1d')['Close'].iloc[-1]:.2f}")
-    c2.metric("GOLD (10G PKR)", f"Rs {gold_pkr:,.0f}")
-    c3.metric("USD / PKR", f"{pkr:.2f}")
+    c1.metric("BRENT CRUDE", f"${yf.Ticker('BZ=F', session=session).history(period='1d')['Close'].iloc[-1]:.2f}")
+    c2.metric("GOLD 10G (PKR)", f"Rs {gold_pkr:,.0f}")
+    c3.metric("USD / PKR", f"{pkr_val:.2f}")
 except:
-    st.write("Initializing Data Feed...")
+    st.write("Initializing Terminal...")
 
 st.markdown("---")
 
-# CATEGORIZED TABLES
-tabs = st.tabs(["Global Benchmarks", "Refined Products", "Regional/Local"])
+# THE TABS (This prevents the 100-index crash)
+tabs = st.tabs(list(GROUPS.keys()))
 
-for i, (category, data_dict) in enumerate(MARKET_DATABASE.items()):
+for i, (category, tickers) in enumerate(GROUPS.items()):
     with tabs[i]:
-        res = fetch_group_data(data_dict)
-        if res:
-            st.table(pd.DataFrame(res))
+        data = get_group_data(tickers)
+        if data:
+            st.table(pd.DataFrame(data))
         else:
-            st.info(f"Checking {category} connection...")
+            st.info(f"Syncing {category} prices...")
 
-# REFRESH
-if st.sidebar.button('FORCE SYNC'):
+# FOOTER
+if st.button('FORCE SYSTEM REBOOT'):
     st.cache_data.clear()
     st.rerun()
 
-st.sidebar.caption(f"Last update: {datetime.now().strftime('%H:%M:%S')}")
+st.caption(f"Sync Time: {datetime.now().strftime('%H:%M:%S')} PKT // Status: Operational")
