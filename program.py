@@ -1,12 +1,11 @@
 import streamlit as st
 import yfinance as yf
-import pandas as pd
 from datetime import datetime
 
 # 1. Page Config
-st.set_page_config(page_title="Global Energy Terminal", layout="wide")
+st.set_page_config(page_title="Market Terminal", layout="wide")
 
-# 2. Executive Noir CSS (Updated for clean vertical layout)
+# 2. CSS
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
@@ -14,132 +13,108 @@ st.markdown("""
     .stApp { background-color: #000000 !important; font-family: 'JetBrains Mono', monospace !important; }
     h1, h2, h3, p, span, label { color: #ffffff !important; font-family: 'JetBrains Mono', monospace !important; }
     
-    /* Metric Styling */
-    div[data-testid="stMetricValue"] { font-size: 32px !important; color: #00FF00 !important; font-weight: 700; }
+    div[data-testid="stMetricValue"] { font-size: 36px !important; color: #00FF00 !important; font-weight: 700; }
     div[data-testid="stMetricLabel"] p { color: #888888 !important; text-transform: uppercase; letter-spacing: 2px; font-size: 12px; }
-    
-    /* Table Styling */
-    .stTable { background-color: #000 !important; border: 1px solid #333 !important; }
-    
-    /* Clean Up UI */
-    header, footer, #MainMenu {visibility: hidden;}
-    hr { border: 0; border-top: 1px solid #333; margin: 20px 0; }
-    
-    /* Subheader spacing */
-    .stSubheader { margin-top: 2rem !important; border-left: 4px solid #00FF00; padding-left: 10px; }
-    </style>
-    """, unsafe_allow_html=True)
+    div[data-testid="stMetricDelta"] { font-size: 14px !important; }
 
-# 3. Categorized Database
-MARKET_DATABASE = {
-    "Global Benchmarks": {
-        "Brent Crude (ICE)": "BZ=F",
-        "WTI Crude (NYMEX)": "CL=F",
-        "Natural Gas (HH)": "NG=F",
-        "Gold (Spot)": "GC=F",
-    },
-    "Refined Products": {
-        "RBOB Gasoline": "RB=F",
-        "Heating Oil": "HO=F",
-        "Ethanol": "CU=F",
-        "Coal (Rotterdam)": "MTF=F"
-    },
-    "Regional & Currency": {
-        "KSE 100 (Pakistan)": "^KSE",
-        "USD/PKR Exchange": "PKR=X",
-        "Murban Crude": "MUR=F",
-        "S&P 500": "^GSPC"
+    header, footer, #MainMenu { visibility: hidden; }
+    hr { border: 0; border-top: 1px solid #222; margin: 20px 0; }
+
+    /* Refresh button */
+    div[data-testid="stButton"] > button {
+        background-color: #000 !important;
+        color: #00FF00 !important;
+        border: 1px solid #00FF00 !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        letter-spacing: 3px;
+        width: 100%;
+        padding: 10px;
     }
-}
+    div[data-testid="stButton"] > button:hover {
+        background-color: #00FF00 !important;
+        color: #000 !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
+# 3. Data Fetcher
 @st.cache_data(ttl=300)
-def fetch_group_data(category_dict):
-    results = []
-    for name, sym in category_dict.items():
+def fetch_prices():
+    results = {}
+    symbols = {
+        "gold": "GC=F",
+        "pkr": "PKR=X",
+        "brent": "BZ=F"
+    }
+    for key, sym in symbols.items():
         try:
-            ticker = yf.Ticker(sym)
-            hist = ticker.history(period="2d")
+            hist = yf.Ticker(sym).history(period="2d")
             if not hist.empty and len(hist) >= 2:
-                price = hist['Close'].iloc[-1]
-                prev = hist['Close'].iloc[-2]
-                change = ((price - prev) / prev) * 100
-                results.append({
-                    "Market/Index": name,
-                    "Price": f"{price:,.2f}",
-                    "Change %": f"{change:+.2f}%"
-                })
+                results[key] = {
+                    "price": hist['Close'].iloc[-1],
+                    "prev": hist['Close'].iloc[-2],
+                }
+            else:
+                results[key] = None
         except:
-            continue
+            results[key] = None
     return results
 
-def get_single_price(symbol):
-    try:
-        data = yf.Ticker(symbol).history(period="2d")
-        return data['Close'].iloc[-1] if not data.empty else None
-    except:
-        return None
+def calc_change(data):
+    if not data:
+        return None, None
+    price = data["price"]
+    change = ((price - data["prev"]) / data["prev"]) * 100
+    return price, change
 
-# 4. Main Interface Header
+# 4. Header
 st.markdown("<h1 style='text-align: center; letter-spacing: 10px; margin-bottom: 0;'>TERMINAL</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #444 !important; font-size: 12px;'>REAL-TIME ENERGY & CURRENCY MONITOR</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #444 !important; font-size: 11px; letter-spacing: 4px;'>LIVE MARKET MONITOR</p>", unsafe_allow_html=True)
 st.markdown("---")
 
-# 5. Featured Metrics Bar
-m1, m2, m3 = st.columns(3)
+# 5. Fetch
+data = fetch_prices()
 
-# Brent Crude Metric
-brent_val = get_single_price("BZ=F")
-if brent_val:
-    m1.metric("BRENT CRUDE", f"${brent_val:.2f}")
+gold_price, gold_change = calc_change(data.get("gold"))
+pkr_price, pkr_change   = calc_change(data.get("pkr"))
+brent_price, brent_change = calc_change(data.get("brent"))
+
+# Gold in PKR (per 10g)
+if gold_price and pkr_price:
+    gold_pkr_10g = (gold_price / 31.103) * 10 * pkr_price
+    gold_pkr_change = (gold_change or 0) + (pkr_change or 0)  # approximate combined change
 else:
-    m1.metric("BRENT CRUDE", "OFFLINE")
+    gold_pkr_10g = None
+    gold_pkr_change = None
 
-# Gold 10G PKR Metric
-gold_usd = get_single_price("GC=F")
-pkr_rate = get_single_price("PKR=X")
-if gold_usd and pkr_rate:
-    gold_pkr_10g = (gold_usd / 31.103) * 10 * pkr_rate
-    m2.metric("GOLD (10G PKR)", f"Rs {gold_pkr_10g:,.0f}")
-else:
-    m2.metric("GOLD (10G PKR)", "DATA ERROR")
+# 6. Metrics
+col1, col2, col3 = st.columns(3)
 
-# USD/PKR Metric
-if pkr_rate:
-    m3.metric("USD / PKR", f"{pkr_rate:.2f}")
-else:
-    m3.metric("USD / PKR", "OFFLINE")
-
-st.markdown("---")
-
-# 6. Data Tables (Vertical Stack - No Tabs)
-def color_changes(val):
-    if not isinstance(val, str): return ""
-    color = '#00FF00' if '+' in val else '#FF3333'
-    return f'color: {color}'
-
-for category, data_dict in MARKET_DATABASE.items():
-    st.subheader(category.upper())
-    raw_data = fetch_group_data(data_dict)
-    
-    if raw_data:
-        df = pd.DataFrame(raw_data)
-        # Handle Pandas version differences for styling
-        try:
-            styled_df = df.style.map(color_changes, subset=['Change %'])
-        except AttributeError:
-            styled_df = df.style.applymap(color_changes, subset=['Change %'])
-            
-        st.table(styled_df)
+with col1:
+    if gold_price:
+        st.metric("GOLD (USD/oz)", f"${gold_price:,.2f}", f"{gold_change:+.2f}%")
     else:
-        st.info(f"Awaiting data for {category}...")
-    st.markdown("<br>", unsafe_allow_html=True)
+        st.metric("GOLD (USD/oz)", "OFFLINE")
 
-# 7. Sidebar Control
-with st.sidebar:
-    st.markdown("### TERMINAL STATUS")
-    if st.button('FORCE SYNC', use_container_width=True):
+with col2:
+    if gold_pkr_10g:
+        st.metric("GOLD (PKR/10g)", f"Rs {gold_pkr_10g:,.0f}", f"{gold_pkr_change:+.2f}%")
+    else:
+        st.metric("GOLD (PKR/10g)", "DATA ERROR")
+
+with col3:
+    if brent_price:
+        st.metric("BRENT CRUDE (USD/bbl)", f"${brent_price:,.2f}", f"{brent_change:+.2f}%")
+    else:
+        st.metric("BRENT CRUDE", "OFFLINE")
+
+st.markdown("---")
+
+# 7. Refresh Button + Timestamp
+col_a, col_b, col_c = st.columns([2, 1, 2])
+with col_b:
+    if st.button("⟳  REFRESH"):
         st.cache_data.clear()
         st.rerun()
-    st.markdown("---")
-    st.caption(f"Last Update: {datetime.now().strftime('%H:%M:%S')}")
-    st.caption("Feed: Yahoo Finance")
+
+st.markdown(f"<p style='text-align: center; color: #333 !important; font-size: 11px; margin-top: 10px;'>LAST UPDATED: {datetime.now().strftime('%Y-%m-%d  %H:%M:%S')} · FEED: YAHOO FINANCE</p>", unsafe_allow_html=True)
